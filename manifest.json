@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "THG Label Downloader",
+  "version": "1.0.0",
+  "description": "Download and zip shipping labels from ECount",
+  "icons": {
+    "128": "icon.png"
+  },
+  "action": {
+    "default_icon": "icon.png"
+  },
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://loginia.ecount.com/*",
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://loginia.ecount.com/*"],
+      "js": ["jszip.min.js", "content.js"],
+      "css": ["style.css"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ]
+}
