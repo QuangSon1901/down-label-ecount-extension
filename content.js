@@ -440,7 +440,7 @@ class LabelDownloader {
         const headers = thead.querySelectorAll('th');
         for (let i = 0; i < headers.length; i++) {
             const text = headers[i].innerText.trim();
-            if (text === 'OrderID') {
+            if (text === 'OrderID' || text === 'Order ID') {
                 console.log('[THG Label Downloader] Found "OrderID" column at index:', i);
                 return i;
             }
@@ -788,7 +788,7 @@ function injectDownloadButton(targetElement) {
 
     const button = document.createElement('button');
     button.className = 'download-label-btn';
-    button.innerHTML = 'Tải label';
+    button.innerHTML = '📥 Tải label';
     button.title = 'Tải xuống shipping labels đã chọn';
 
     button.onclick = async () => {
