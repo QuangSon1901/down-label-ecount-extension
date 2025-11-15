@@ -1,12 +1,12 @@
-// THG Label Downloader Extension
-console.log('[THG Label Downloader] Extension loaded');
+// THG Label Printer Extension - OPTIMIZED VERSION
+console.log('[THG Label Printer] Extension loaded - Optimized version');
 
-// Kiểm tra JSZip đã load chưa
-if (!window.JSZip) {
-    console.error('[THG Label Downloader] JSZip is not loaded!');
-    alert('❌ Extension lỗi: Thiếu thư viện JSZip!\n\nVui lòng liên hệ developer.');
+// Kiểm tra PDF.js đã load chưa
+if (!window.pdfjsLib) {
+    console.error('[THG Label Printer] PDF.js is not loaded!');
 } else {
-    console.log('[THG Label Downloader] JSZip loaded successfully');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
+    console.log('[THG Label Printer] PDF.js loaded successfully');
 }
 
 // ============================================
@@ -46,12 +46,6 @@ class LoadingOverlay {
         this.subtextElement = this.overlay.querySelector('.label-loading-subtext');
         this.progressElement = this.overlay.querySelector('.label-loading-progress');
         this.progressBar = this.overlay.querySelector('.label-loading-progress-fill');
-
-        this.overlay.addEventListener('click', (e) => {
-            if (e.target === this.overlay) {
-                e.stopPropagation();
-            }
-        });
     }
 
     updateText(text) {
@@ -101,9 +95,6 @@ class LabelLinkRenderer {
         this.debounceTimer = null;
     }
 
-    /**
-     * Tìm index của cột "Shipping label"
-     */
     findShippingLabelColumnIndex() {
         const thead = document.querySelector('.wrapper-frame-body thead');
         if (!thead) return -1;
@@ -118,9 +109,6 @@ class LabelLinkRenderer {
         return -1;
     }
 
-    /**
-     * Lấy tất cả cells có shipping label
-     */
     getShippingLabelCells() {
         if (this.shippingLabelColumnIndex === -1) {
             this.shippingLabelColumnIndex = this.findShippingLabelColumnIndex();
@@ -141,7 +129,6 @@ class LabelLinkRenderer {
                 const cell = rowCells[this.shippingLabelColumnIndex];
                 const labelText = cell.innerText.trim();
                 
-                // Chỉ lấy cells có label (không rỗng)
                 if (labelText && labelText !== '' && labelText !== '\u00A0') {
                     cells.push({
                         cell: cell,
@@ -156,9 +143,6 @@ class LabelLinkRenderer {
         return cells;
     }
 
-    /**
-     * Kiểm tra xem danh sách labels có thay đổi không
-     */
     hasLabelsChanged(newCells) {
         const newLabelSet = new Set(newCells.map(c => c.cellId));
         
@@ -175,26 +159,18 @@ class LabelLinkRenderer {
         return false;
     }
 
-    /**
-     * Kiểm tra cell đã được render chưa
-     */
     isCellAlreadyRendered(cell) {
         const existingLink = cell.querySelector('a[data-label-link]');
         return existingLink !== null;
     }
 
-    /**
-     * Render link trong cell
-     */
     renderLabelLink(cellData) {
         const { cell, labelUrl } = cellData;
 
-        // Kiểm tra đã render chưa
         if (this.isCellAlreadyRendered(cell)) {
             return false;
         }
 
-        // Tạo link element
         const link = document.createElement('a');
         link.setAttribute('data-label-link', 'true');
         link.href = labelUrl;
@@ -209,7 +185,6 @@ class LabelLinkRenderer {
             max-width: 100%;
         `;
 
-        // Hover effect
         link.addEventListener('mouseenter', () => {
             link.style.textDecoration = 'underline';
         });
@@ -217,11 +192,9 @@ class LabelLinkRenderer {
             link.style.textDecoration = 'none';
         });
 
-        // Clear cell và thêm link
         cell.innerHTML = '';
         cell.appendChild(link);
         
-        // Set cell style
         cell.style.maxWidth = '300px';
         cell.style.overflow = 'hidden';
         cell.style.textOverflow = 'ellipsis';
@@ -229,53 +202,35 @@ class LabelLinkRenderer {
         return true;
     }
 
-    /**
-     * Process và render tất cả label links
-     */
     processLabels() {
         if (this.isProcessing) {
-            console.log('[THG Label Downloader] Already processing labels, skip...');
             return;
         }
 
         try {
             this.isProcessing = true;
 
-            // Lấy cells từ table
             const cellsData = this.getShippingLabelCells();
             
             if (cellsData.length === 0) {
-                console.log('[THG Label Downloader] No shipping labels found in table');
                 return;
             }
 
-            // Kiểm tra xem có thay đổi không
             const hasChanged = this.hasLabelsChanged(cellsData);
             
             if (!hasChanged) {
-                console.log('[THG Label Downloader] Labels unchanged, checking if UI needs update...');
-                // Kiểm tra xem có cell nào cần re-render không
                 let updatedCount = 0;
                 cellsData.forEach(cellData => {
                     if (this.renderLabelLink(cellData)) {
                         updatedCount++;
                     }
                 });
-                if (updatedCount > 0) {
-                    console.log('[THG Label Downloader] ✅ Re-rendered', updatedCount, 'labels');
-                }
                 return;
             }
 
-            console.log('[THG Label Downloader] Labels changed, rendering', cellsData.length, 'links');
-
-            // Update current labels
             this.currentLabels = new Set(cellsData.map(c => c.cellId));
-
-            // Reset rendered cells
             this.renderedCells.clear();
 
-            // Render tất cả links
             let renderedCount = 0;
             cellsData.forEach(cellData => {
                 if (this.renderLabelLink(cellData)) {
@@ -284,33 +239,21 @@ class LabelLinkRenderer {
                 }
             });
 
-            if (renderedCount > 0) {
-                console.log('[THG Label Downloader] ✅ Rendered', renderedCount, 'label links');
-            }
-
         } catch (error) {
-            console.error('[THG Label Downloader] Error processing labels:', error);
+            console.error('[THG Label Printer] Error processing labels:', error);
         } finally {
             this.isProcessing = false;
         }
     }
 
-    /**
-     * Bắt đầu observe table changes
-     */
     startObserving() {
-        // Dừng observer cũ nếu có
         this.stopObserving();
 
-        // Tạo observer mới
         this.observer = new MutationObserver((mutations) => {
-            // Kiểm tra xem có thay đổi quan trọng không
             const hasImportantChange = mutations.some(mutation => {
-                // Chỉ quan tâm thay đổi trong tbody
                 if (mutation.target.tagName === 'TBODY') return true;
                 if (mutation.target.closest && mutation.target.closest('tbody')) return true;
                 
-                // Kiểm tra added nodes
                 const hasNewRows = Array.from(mutation.addedNodes).some(node => {
                     if (node.nodeType !== 1) return false;
                     return node.tagName === 'TR' || (node.closest && node.closest('tbody'));
@@ -318,7 +261,6 @@ class LabelLinkRenderer {
                 
                 if (hasNewRows) return true;
 
-                // Kiểm tra removed nodes
                 const hasRemovedRows = Array.from(mutation.removedNodes).some(node => {
                     if (node.nodeType !== 1) return false;
                     return node.tagName === 'TR' || (node.closest && node.closest('tbody'));
@@ -328,9 +270,6 @@ class LabelLinkRenderer {
             });
 
             if (hasImportantChange) {
-                console.log('[THG Label Downloader] Important table change detected');
-                
-                // Debounce: chờ 1000ms sau thay đổi cuối cùng
                 clearTimeout(this.debounceTimer);
                 this.debounceTimer = setTimeout(() => {
                     this.processLabels();
@@ -338,7 +277,6 @@ class LabelLinkRenderer {
             }
         });
 
-        // Observe wrapper-frame-body
         const frameBody = document.querySelector('.wrapper-frame-body');
         if (frameBody) {
             this.observer.observe(frameBody, {
@@ -347,16 +285,11 @@ class LabelLinkRenderer {
                 attributes: false,
                 characterData: false
             });
-            console.log('[THG Label Downloader] Started observing table changes');
 
-            // Process ngay lần đầu
             setTimeout(() => this.processLabels(), 1500);
         }
     }
 
-    /**
-     * Dừng observe
-     */
     stopObserving() {
         if (this.observer) {
             this.observer.disconnect();
@@ -365,9 +298,6 @@ class LabelLinkRenderer {
         clearTimeout(this.debounceTimer);
     }
 
-    /**
-     * Reset renderer
-     */
     reset() {
         this.stopObserving();
         this.currentLabels.clear();
@@ -377,46 +307,35 @@ class LabelLinkRenderer {
     }
 }
 
-// Global instance
 const labelLinkRenderer = new LabelLinkRenderer();
 
 // ============================================
-// LABEL DOWNLOADER CLASS
+// LABEL PRINTER CLASS - OPTIMIZED V2
 // ============================================
 
-class LabelDownloader {
+class LabelPrinter {
     constructor() {
         this.shippingLabelColumnIndex = -1;
         this.codeColumnIndex = -1;
-        this.downloading = false;
+        this.processing = false;
+        this.BATCH_SIZE = 10;
+        this.RENDER_SCALE = 4;
     }
 
-    /**
-     * Tìm index của cột "Shipping label"
-     */
     findShippingLabelColumnIndex() {
         const thead = document.querySelector('.wrapper-frame-body thead');
-        if (!thead) {
-            console.warn('[THG Label Downloader] Table header not found');
-            return -1;
-        }
+        if (!thead) return -1;
 
         const headers = thead.querySelectorAll('th');
         for (let i = 0; i < headers.length; i++) {
             const text = headers[i].innerText.trim();
             if (text === 'Shipping label') {
-                console.log('[THG Label Downloader] Found "Shipping label" column at index:', i);
                 return i;
             }
         }
-        
-        console.warn('[THG Label Downloader] "Shipping label" column not found');
         return -1;
     }
 
-    /**
-     * Tìm index của cột "Code-THG"
-     */
     findCodeColumnIndex() {
         const thead = document.querySelector('.wrapper-frame-body thead');
         if (!thead) return -1;
@@ -425,11 +344,9 @@ class LabelDownloader {
         for (let i = 0; i < headers.length; i++) {
             const text = headers[i].innerText.trim();
             if (text === 'Code-THG') {
-                console.log('[THG Label Downloader] Found "Code-THG" column at index:', i);
                 return i;
             }
         }
-        
         return -1;
     }
 
@@ -441,19 +358,13 @@ class LabelDownloader {
         for (let i = 0; i < headers.length; i++) {
             const text = headers[i].innerText.trim();
             if (text === 'OrderID' || text === 'Order ID') {
-                console.log('[THG Label Downloader] Found "OrderID" column at index:', i);
                 return i;
             }
         }
-        
         return -1;
     }
 
-    /**
-     * Lấy danh sách links từ các rows đã chọn
-     */
     getSelectedLabelLinks() {
-        // Tìm cột nếu chưa có
         if (this.shippingLabelColumnIndex === -1) {
             this.shippingLabelColumnIndex = this.findShippingLabelColumnIndex();
             if (this.shippingLabelColumnIndex === -1) {
@@ -468,48 +379,36 @@ class LabelDownloader {
         const orderIDColumnIndex = this.findOrderIDColumnIndex();
 
         const tbody = document.querySelector('.wrapper-frame-body tbody');
-        if (!tbody) {
-            console.warn('[THG Label Downloader] Table body not found');
-            return [];
-        }
+        if (!tbody) return [];
 
-        // Lấy các rows đã được chọn (có class active)
         const selectedRows = tbody.querySelectorAll('tr[data-row-sid].active');
-        console.log('[THG Label Downloader] Found', selectedRows.length, 'selected rows');
-
         const links = [];
 
         selectedRows.forEach((row, index) => {
             const cells = row.querySelectorAll('td');
             
             if (cells.length <= this.shippingLabelColumnIndex) {
-                console.warn('[THG Label Downloader] Row', index, 'does not have enough cells');
                 return;
             }
 
             const labelCell = cells[this.shippingLabelColumnIndex];
             
-            // Lấy URL từ link element nếu có, nếu không thì lấy text
             const linkElement = labelCell.querySelector('a[data-label-link]');
             const linkText = linkElement ? linkElement.href : labelCell.innerText.trim();
             
-            // Kiểm tra xem có link không (bỏ qua ô trống hoặc nbsp)
             if (!linkText || linkText === '' || linkText === '\u00A0') {
-                console.log('[THG Label Downloader] Row', index, 'has no shipping label link');
                 return;
             }
 
-            // Lấy mã đơn hàng
             let orderCode = `order_${index + 1}`;
             let orderID = '';
             
-            // Thử lấy từ cột Code-THG
             if (this.codeColumnIndex !== -1 && cells.length > this.codeColumnIndex) {
                 const codeCell = cells[this.codeColumnIndex];
                 const codeSpan = codeCell.querySelector('span:not([data-status-code])');
                 const code = codeSpan ? codeSpan.innerText.trim() : codeCell.innerText.trim();
                 if (code && code !== '' && code !== '\u00A0') {
-                    orderCode = code.replace(/[\/\\:*?"<>|]/g, '_'); // Sanitize filename
+                    orderCode = code.replace(/[\/\\:*?"<>|]/g, '_');
                 }
             }
 
@@ -517,16 +416,15 @@ class LabelDownloader {
                 const codeCell = cells[orderIDColumnIndex];
                 const code = codeCell.innerText.trim();
                 if (code && code !== '' && code !== '\u00A0') {
-                    orderID = code.replace(/[\/\\:*?"<>|]/g, '_'); // Sanitize filename
+                    orderID = code.replace(/[\/\\:*?"<>|]/g, '_');
                 }
             }
-            
-            console.log('[THG Label Downloader] Row', index, '- Order:', orderCode, '- Link:', linkText);
             
             links.push({
                 url: linkText,
                 filename: `${orderID}--${orderCode}.pdf`,
                 orderCode: orderCode,
+                orderID: orderID,
                 rowIndex: index
             });
         });
@@ -534,9 +432,6 @@ class LabelDownloader {
         return links;
     }
 
-    /**
-     * Tải file qua background script
-     */
     async fetchFileViaBackground(url) {
         return new Promise((resolve, reject) => {
             chrome.runtime.sendMessage(
@@ -548,7 +443,6 @@ class LabelDownloader {
                     }
                     
                     if (response.success) {
-                        // Convert base64 back to blob
                         const blob = this.base64ToBlob(response.blob, 'application/pdf');
                         resolve(blob);
                     } else {
@@ -559,9 +453,6 @@ class LabelDownloader {
         });
     }
 
-    /**
-     * Convert Base64 to Blob
-     */
     base64ToBlob(base64, contentType = '') {
         const byteCharacters = atob(base64);
         const byteNumbers = new Array(byteCharacters.length);
@@ -574,127 +465,322 @@ class LabelDownloader {
         return new Blob([byteArray], { type: contentType });
     }
 
-    /**
-     * Tải và nén tất cả labels
-     */
-    async downloadAndZipLabels(links) {
-        if (!window.JSZip) {
-            alert('❌ Thư viện JSZip chưa được tải!\n\nVui lòng reload extension và thử lại.');
+    async loadPDFPages(blob) {
+        const arrayBuffer = await blob.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        const pages = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            pages.push(page);
+        }
+        
+        return pages;
+    }
+
+    async renderPageToCanvas(page) {
+        const viewport = page.getViewport({ scale: this.RENDER_SCALE });
+        
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { 
+            alpha: false,
+            willReadFrequently: false,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high'
+        });
+        
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+            canvasContext: context,
+            viewport: viewport
+        };
+
+        await page.render(renderContext).promise;
+        
+        return canvas;
+    }
+
+    async processBatch(links, startIndex, batchSize, allCanvases, errors) {
+        const batch = links.slice(startIndex, startIndex + batchSize);
+        const promises = batch.map(async (link, batchIndex) => {
+            const globalIndex = startIndex + batchIndex;
+            
+            try {
+                const blob = await this.fetchFileViaBackground(link.url);
+                const pages = await this.loadPDFPages(blob);
+                
+                const canvases = [];
+                for (const page of pages) {
+                    const canvas = await this.renderPageToCanvas(page);
+                    canvases.push({
+                        canvas: canvas,
+                        orderCode: link.orderCode,
+                        orderID: link.orderID,
+                        index: globalIndex
+                    });
+                }
+                
+                return { success: true, canvases: canvases, link: link };
+                
+            } catch (error) {
+                errors.push({
+                    orderCode: link.orderCode,
+                    filename: link.filename,
+                    error: error.message
+                });
+                console.error(`[THG Label Printer] ❌ Failed: ${link.filename}`, error);
+                return { success: false, link: link };
+            }
+        });
+
+        const results = await Promise.all(promises);
+        
+        results.forEach(result => {
+            if (result.success && result.canvases) {
+                allCanvases.push(...result.canvases);
+            }
+        });
+
+        return results.filter(r => r.success).length;
+    }
+
+    // TẠO HTML TEMPLATE CHO PRINT PAGE
+    createPrintPageHTML() {
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Shipping Labels - ${new Date().toLocaleDateString('vi-VN')}</title>
+                <style>
+                    @page {
+                        size: A4;
+                        margin: 0;
+                    }
+                    
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: white;
+                    }
+                    
+                    .page-container {
+                        page-break-after: always;
+                        page-break-inside: avoid;
+                        position: relative;
+                        width: 210mm;
+                        min-height: 297mm;
+                        margin: 0 auto;
+                        background: white;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    
+                    .page-container:last-child {
+                        page-break-after: auto;
+                    }
+                    
+                    .label-info {
+                        text-align: center;
+                        margin-bottom: 5mm;
+                        font-family: Arial, sans-serif;
+                        font-size: 12pt;
+                        font-weight: bold;
+                        color: #333;
+                    }
+                    
+                    .label-canvas {
+                        max-width: 100%;
+                        width: 80%;
+                        height: auto;
+                        display: block;
+                        margin: 0 auto;
+                    }
+                    
+                    @media print {
+                        body {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                        }
+                        
+                        .page-container {
+                            margin: 0;
+                        }
+                    }
+                    
+                    .loading {
+                        text-align: center;
+                        padding: 50px;
+                        font-family: Arial, sans-serif;
+                        font-size: 18pt;
+                    }
+                    
+                    .spinner {
+                        border: 4px solid #f3f3f3;
+                        border-top: 4px solid #667eea;
+                        border-radius: 50%;
+                        width: 40px;
+                        height: 40px;
+                        animation: spin 1s linear infinite;
+                        margin: 20px auto;
+                    }
+                    
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                </style>
+            </head>
+            <body>
+                <div id="print-content"></div>
+            </body>
+            </html>
+        `;
+    }
+
+    async printAllLabels(links) {
+        if (!window.pdfjsLib) {
+            alert('❌ Thư viện PDF.js chưa được tải!\n\nVui lòng reload extension và thử lại.');
             return;
         }
 
-        if (this.downloading) {
-            alert('⚠️ Đang tải xuống, vui lòng đợi...');
+        if (this.processing) {
+            alert('⚠️ Đang xử lý, vui lòng đợi...');
             return;
         }
 
-        this.downloading = true;
+        this.processing = true;
         
         loadingOverlay.show(
-            'Đang tải xuống shipping labels',
-            `Tổng cộng ${links.length} file`
+            'Đang tải shipping labels',
+            `Tổng cộng ${links.length} file - Xử lý ${this.BATCH_SIZE} file cùng lúc`
         );
 
+        const startTime = Date.now();
+
         try {
-            const zip = new JSZip();
             let successCount = 0;
-            let failedCount = 0;
             const errors = [];
+            const allCanvases = [];
 
-            // Tải từng file
-            for (let i = 0; i < links.length; i++) {
-                const link = links[i];
+            // ===================================
+            // BƯỚC 1: XỬ LÝ TẤT CẢ TRONG TAB HIỆN TẠI
+            // ===================================
+            const totalBatches = Math.ceil(links.length / this.BATCH_SIZE);
+            
+            for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
+                const startIndex = batchNum * this.BATCH_SIZE;
                 
-                loadingOverlay.updateText('Đang tải xuống shipping labels');
-                loadingOverlay.updateSubtext(`Đang tải ${link.filename}...`);
-                loadingOverlay.updateProgress(i, links.length);
+                loadingOverlay.updateText('Đang tải shipping labels');
+                loadingOverlay.updateSubtext(`Batch ${batchNum + 1}/${totalBatches} - ${this.BATCH_SIZE} files cùng lúc`);
+                loadingOverlay.updateProgress(startIndex, links.length);
 
-                try {
-                    // Sử dụng background script để download
-                    const blob = await this.fetchFileViaBackground(link.url);
-                    
-                    // Thêm vào ZIP
-                    zip.file(link.filename, blob);
-                    
-                    successCount++;
-                    console.log(`[THG Label Downloader] ✅ Downloaded: ${link.filename} (${blob.size} bytes)`);
-                    
-                } catch (error) {
-                    failedCount++;
-                    errors.push({
-                        orderCode: link.orderCode,
-                        filename: link.filename,
-                        error: error.message
-                    });
-                    console.error(`[THG Label Downloader] ❌ Failed: ${link.filename}`, error);
-                }
-
-                // Delay nhỏ giữa các request để tránh rate limit
-                if (i < links.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
+                const batchSuccess = await this.processBatch(
+                    links, 
+                    startIndex, 
+                    this.BATCH_SIZE, 
+                    allCanvases, 
+                    errors
+                );
+                
+                successCount += batchSuccess;
+                
+                const processed = Math.min(startIndex + this.BATCH_SIZE, links.length);
+                loadingOverlay.updateProgress(processed, links.length);
             }
 
-            // Cập nhật progress cuối cùng
-            loadingOverlay.updateProgress(links.length, links.length);
+            const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[THG Label Printer] ⚡ Processed ${successCount} files in ${processingTime}s`);
 
-            // Tạo ZIP file
-            if (successCount > 0) {
-                loadingOverlay.updateText('Đang nén file...');
-                loadingOverlay.updateSubtext('Vui lòng đợi, đây có thể mất vài giây...');
+            if (allCanvases.length > 0) {
+                loadingOverlay.updateText('Đang chuẩn bị HTML...');
+                loadingOverlay.updateSubtext(`Đã xử lý ${successCount}/${links.length} file trong ${processingTime}s`);
 
-                const zipBlob = await zip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: {
-                        level: 6
+                // Sắp xếp lại theo thứ tự gốc
+                allCanvases.sort((a, b) => a.index - b.index);
+
+                // ===================================
+                // BƯỚC 2: TẠO HTML CONTENT TRƯỚC
+                // ===================================
+                let htmlContent = '';
+                
+                for (let i = 0; i < allCanvases.length; i++) {
+                    const { canvas, orderCode, orderID } = allCanvases[i];
+                    
+                    // Convert canvas to base64 TRƯỚC KHI mở tab mới
+                    const imageData = canvas.toDataURL('image/png', 0.95);
+                    
+                    htmlContent += `
+                        <div class="page-container">
+                            <img class="label-canvas" src="${imageData}" />
+                        </div>
+                    `;
+                    
+                    // Update progress
+                    if (i % 10 === 0) {
+                        loadingOverlay.updateSubtext(`Chuẩn bị HTML: ${i + 1}/${allCanvases.length}`);
                     }
-                }, (metadata) => {
-                    // Progress callback
-                    const percent = metadata.percent.toFixed(0);
-                    loadingOverlay.updateSubtext(`Đang nén... ${percent}%`);
-                });
-
-                console.log('[THG Label Downloader] ZIP file created, size:', zipBlob.size, 'bytes');
-
-                // Tạo tên file với timestamp
-                const now = new Date();
-                const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
-                const filename = `shipping_labels_${timestamp}.zip`;
-
-                loadingOverlay.updateText('✅ Hoàn thành!');
-                loadingOverlay.updateSubtext(`Đã tải ${successCount}/${links.length} file thành công`);
-
-                // Download ZIP
-                this.downloadBlob(zipBlob, filename);
-
-                // Show result
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                let message = `✅ Tải xuống thành công!\n\n`;
-                message += `📦 File: ${filename}\n`;
-                message += `📊 Kết quả:\n`;
-                message += `  • Thành công: ${successCount} file\n`;
-                
-                if (failedCount > 0) {
-                    message += `  • Thất bại: ${failedCount} file\n\n`;
-                    message += `❌ Chi tiết lỗi:\n`;
-                    errors.forEach(err => {
-                        message += `  • ${err.orderCode}: ${err.error}\n`;
-                    });
                 }
 
-                alert(message);
-
-            } else {
-                loadingOverlay.updateText('❌ Thất bại');
-                loadingOverlay.updateSubtext('Không tải được file nào');
+                loadingOverlay.updateText('Mở cửa sổ in...');
                 
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // ===================================
+                // BƯỚC 3: MỞ TAB MỚI VÀ GHI HTML ĐÃ CHUẨN BỊ
+                // ===================================
+                const printWindow = window.open('', '_blank');
+                
+                if (!printWindow) {
+                    throw new Error('Không thể mở cửa sổ mới. Vui lòng cho phép popup!');
+                }
+
+                // Ghi HTML đã chuẩn bị sẵn
+                printWindow.document.write(this.createPrintPageHTML());
+                printWindow.document.close();
+
+                // Thêm content
+                const contentDiv = printWindow.document.getElementById('print-content');
+                contentDiv.innerHTML = htmlContent;
+
+                // Đợi images load
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                loadingOverlay.hide();
+
+                // Show result
+                if (errors.length > 0) {
+                    let message = '';
+                    message += `❌ Thất bại: ${errors.length} file\n\n`;
+                    const showErrors = errors.slice(0, 5);
+                    message += `Chi tiết lỗi:\n`;
+                    showErrors.forEach(err => {
+                        message += `  • ${err.orderCode}: ${err.error}\n`;
+                    });
+                    if (errors.length > 5) {
+                        message += `  ... và ${errors.length - 5} lỗi khác\n`;
+                    }
+                    message += '\n';
+                    alert(message);
+                } else {
+                    printWindow.focus();
+                    setTimeout(() => {
+                        printWindow.print();
+                    }, 300);
+                }
+            } else {
+                loadingOverlay.hide();
                 
                 let message = '❌ Không tải được file nào!\n\n';
                 message += 'Chi tiết lỗi:\n';
-                errors.forEach(err => {
+                errors.slice(0, 10).forEach(err => {
                     message += `• ${err.orderCode}: ${err.error}\n`;
                 });
                 
@@ -702,43 +788,17 @@ class LabelDownloader {
             }
 
         } catch (error) {
-            console.error('[THG Label Downloader] Fatal error:', error);
+            console.error('[THG Label Printer] Fatal error:', error);
             alert('❌ Có lỗi xảy ra:\n\n' + error.message);
         } finally {
             loadingOverlay.hide();
-            this.downloading = false;
+            this.processing = false;
         }
     }
 
-    /**
-     * Download blob as file
-     */
-    downloadBlob(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.style.display = 'none';
-        
-        document.body.appendChild(a);
-        a.click();
-        
-        // Cleanup
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
-        
-        console.log('[THG Label Downloader] File download triggered:', filename);
-    }
+    async handlePrint() {
+        console.log('[THG Label Printer] Print button clicked');
 
-    /**
-     * Xử lý click button
-     */
-    async handleDownload() {
-        console.log('[THG Label Downloader] Download button clicked');
-
-        // Lấy danh sách links
         const links = this.getSelectedLabelLinks();
 
         if (links.length === 0) {
@@ -750,13 +810,18 @@ class LabelDownloader {
             return;
         }
 
-        console.log('[THG Label Downloader] Found', links.length, 'labels to download');
+        console.log('[THG Label Printer] Found', links.length, 'labels to print');
 
-        // Hiển thị danh sách
-        let confirmMessage = `📽 Bạn muốn tải xuống ${links.length} shipping label(s)?\n\n`;
+        let confirmMessage = `🖨️ Bạn muốn in ${links.length} shipping label(s)?\n\n`;
+        
+        if (links.length > 50) {
+            confirmMessage += `⚡ Chế độ xử lý nhanh: ${this.BATCH_SIZE} files song song\n`;
+            confirmMessage += `⏱️ Dự kiến: ~${Math.ceil(links.length / this.BATCH_SIZE * 2)}s\n\n`;
+        }
+        
         confirmMessage += 'Danh sách:\n';
         links.slice(0, 10).forEach((link, i) => {
-            confirmMessage += `${i + 1}. ${link.orderCode}\n`;
+            confirmMessage += `${i + 1}. ${link.orderID || link.orderCode}\n`;
         });
         if (links.length > 10) {
             confirmMessage += `... và ${links.length - 10} đơn hàng khác\n`;
@@ -764,39 +829,36 @@ class LabelDownloader {
 
         const confirmed = confirm(confirmMessage);
         if (!confirmed) {
-            console.log('[THG Label Downloader] Download cancelled by user');
+            console.log('[THG Label Printer] Print cancelled by user');
             return;
         }
 
-        // Tải và nén
-        await this.downloadAndZipLabels(links);
+        await this.printAllLabels(links);
     }
 }
 
-// Global instance
-const labelDownloader = new LabelDownloader();
+const labelPrinter = new LabelPrinter();
 
 // ============================================
 // BUTTON INJECTION
 // ============================================
 
-function injectDownloadButton(targetElement) {
-    // Kiểm tra đã có button chưa
-    if (document.querySelector('.download-label-btn')) {
+function injectPrintButton(targetElement) {
+    if (document.querySelector('.print-label-btn')) {
         return;
     }
 
     const button = document.createElement('button');
-    button.className = 'download-label-btn';
-    button.innerHTML = '📥 Tải label';
-    button.title = 'Tải xuống shipping labels đã chọn';
+    button.className = 'download-label-btn print-label-btn';
+    button.innerHTML = '🖨️ In label';
+    button.title = 'In shipping labels đã chọn';
 
     button.onclick = async () => {
         button.disabled = true;
         try {
-            await labelDownloader.handleDownload();
+            await labelPrinter.handlePrint();
         } catch (error) {
-            console.error('[THG Label Downloader] Button click error:', error);
+            console.error('[THG Label Printer] Button click error:', error);
             alert('❌ Có lỗi xảy ra: ' + error.message);
         } finally {
             button.disabled = false;
@@ -804,7 +866,7 @@ function injectDownloadButton(targetElement) {
     };
 
     targetElement.parentElement.appendChild(button);
-    console.log('[THG Label Downloader] Download button injected');
+    console.log('[THG Label Printer] Print button injected');
 }
 
 // ============================================
@@ -812,7 +874,6 @@ function injectDownloadButton(targetElement) {
 // ============================================
 
 function tryInjectButton() {
-    // Kiểm tra xem có đang ở trang "Danh sách đơn bán hàng" không
     const header = document.querySelector('.wrapper-frame-body #btn-header-bookmark[data-item-key="menu_name_header_data_model"]');
     if (!header) {
         return;
@@ -823,26 +884,18 @@ function tryInjectButton() {
         return;
     }
 
-    console.log('[THG Label Downloader] Detected "Danh sách đơn bán hàng" page');
-
-    // Tìm nút "Thêm mới" ở footer để inject button
     const newButtons = document.querySelectorAll('#footer_toolbar_toolbar_item_new button');
     if (!newButtons.length) {
-        console.log('[THG Label Downloader] Footer buttons not found yet');
         return;
     }
 
     newButtons.forEach((btn) => {
-        if (btn.parentElement.querySelector('.download-label-btn')) {
+        if (btn.parentElement.querySelector('.print-label-btn')) {
             return;
         }
-        injectDownloadButton(btn);
+        injectPrintButton(btn);
     });
 }
-
-// ============================================
-// CHECK AND START LABEL LINK RENDERING
-// ============================================
 
 function checkAndStartLabelLinkRendering() {
     const header = document.querySelector('.wrapper-frame-body #btn-header-bookmark[data-item-key="menu_name_header_data_model"]');
@@ -853,11 +906,10 @@ function checkAndStartLabelLinkRendering() {
 
     const text = header.innerText.normalize('NFC').trim();
     if (text === "Danh sách đơn bán hàng") {
-        // Đợi table load xong
         setTimeout(() => {
             const columnIndex = labelLinkRenderer.findShippingLabelColumnIndex();
             if (columnIndex !== -1) {
-                console.log('[THG Label Downloader] Found "Shipping label" column, starting link rendering...');
+                console.log('[THG Label Printer] Found "Shipping label" column, starting link rendering...');
                 labelLinkRenderer.startObserving();
             }
         }, 500);
@@ -870,22 +922,19 @@ function checkAndStartLabelLinkRendering() {
 // OBSERVER & INITIALIZATION
 // ============================================
 
-// Observer để theo dõi thay đổi DOM
 const observer = new MutationObserver(() => {
     tryInjectButton();
     checkAndStartLabelLinkRendering();
 });
 
-// Start observing
 observer.observe(document.body, { 
     childList: true, 
     subtree: true 
 });
 
-// Thử inject ngay khi load
 setTimeout(() => {
     tryInjectButton();
     checkAndStartLabelLinkRendering();
 }, 1000);
 
-console.log('[THG Label Downloader] Initialized successfully with link rendering');
+console.log('[THG Label Printer] Initialized - OPTIMIZED VERSION with parallel processing');

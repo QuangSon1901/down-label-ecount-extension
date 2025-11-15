@@ -1,5 +1,5 @@
-/* Download Label Button */
-.download-label-btn {
+/* Download/Print Label Button */
+.download-label-btn, .print-label-btn {
     margin-left: 8px !important;
     margin-top: -4px;
     padding: 5px 10px;
@@ -11,12 +11,12 @@
     transition: all 0.3s ease;
 }
 
-.download-label-btn:hover {
+.download-label-btn:hover, .print-label-btn:hover {
     background-color: #f8f9fa;
     border-color: #4CAF50;
 }
 
-.download-label-btn:disabled {
+.download-label-btn:disabled, .print-label-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     background: #cccccc;
@@ -101,9 +101,9 @@
     border-radius: 4px;
     transition: width 0.3s ease;
     box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+    animation: progressPulse 2s ease-in-out infinite;
 }
 
-/* Animation for progress fill */
 @keyframes progressPulse {
     0%, 100% {
         opacity: 1;
@@ -111,8 +111,4 @@
     50% {
         opacity: 0.8;
     }
-}
-
-.label-loading-progress-fill {
-    animation: progressPulse 2s ease-in-out infinite;
 }
