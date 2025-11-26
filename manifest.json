@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "THG Label Printer",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Print shipping labels from ECount",
   "icons": {
     "128": "icon.png"
@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://loginia.ecount.com/*"],
-      "js": ["pdf.min.js", "content.js"],
+      "js": ["pdf-lib.min.js", "content.js"],
       "css": ["style.css"],
       "run_at": "document_end",
       "all_frames": false
@@ -30,7 +30,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pdf.worker.min.js"],
+      "resources": [],
       "matches": ["<all_urls>"]
     }
   ]

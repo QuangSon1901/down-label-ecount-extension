@@ -310,7 +310,7 @@ class LabelLinkRenderer {
 const labelLinkRenderer = new LabelLinkRenderer();
 
 // ============================================
-// LABEL PRINTER CLASS - OPTIMIZED V2
+// LABEL PRINTER CLASS - PDF MERGE VERSION
 // ============================================
 
 class LabelPrinter {
@@ -319,7 +319,6 @@ class LabelPrinter {
         this.codeColumnIndex = -1;
         this.processing = false;
         this.BATCH_SIZE = 10;
-        this.RENDER_SCALE = 4;
     }
 
     findShippingLabelColumnIndex() {
@@ -465,64 +464,21 @@ class LabelPrinter {
         return new Blob([byteArray], { type: contentType });
     }
 
-    async loadPDFPages(blob) {
-        const arrayBuffer = await blob.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        
-        const pages = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            pages.push(page);
-        }
-        
-        return pages;
-    }
-
-    async renderPageToCanvas(page) {
-        const viewport = page.getViewport({ scale: this.RENDER_SCALE });
-        
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d', { 
-            alpha: false,
-            willReadFrequently: false,
-            imageSmoothingEnabled: true,
-            imageSmoothingQuality: 'high'
-        });
-        
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        const renderContext = {
-            canvasContext: context,
-            viewport: viewport
-        };
-
-        await page.render(renderContext).promise;
-        
-        return canvas;
-    }
-
-    async processBatch(links, startIndex, batchSize, allCanvases, errors) {
+    async processBatch(links, startIndex, batchSize, allPdfBytes, errors) {
         const batch = links.slice(startIndex, startIndex + batchSize);
         const promises = batch.map(async (link, batchIndex) => {
             const globalIndex = startIndex + batchIndex;
             
             try {
                 const blob = await this.fetchFileViaBackground(link.url);
-                const pages = await this.loadPDFPages(blob);
+                const arrayBuffer = await blob.arrayBuffer();
                 
-                const canvases = [];
-                for (const page of pages) {
-                    const canvas = await this.renderPageToCanvas(page);
-                    canvases.push({
-                        canvas: canvas,
-                        orderCode: link.orderCode,
-                        orderID: link.orderID,
-                        index: globalIndex
-                    });
-                }
-                
-                return { success: true, canvases: canvases, link: link };
+                return { 
+                    success: true, 
+                    pdfBytes: arrayBuffer,
+                    link: link,
+                    index: globalIndex
+                };
                 
             } catch (error) {
                 errors.push({
@@ -538,118 +494,48 @@ class LabelPrinter {
         const results = await Promise.all(promises);
         
         results.forEach(result => {
-            if (result.success && result.canvases) {
-                allCanvases.push(...result.canvases);
+            if (result.success && result.pdfBytes) {
+                allPdfBytes.push({
+                    bytes: result.pdfBytes,
+                    link: result.link,
+                    index: result.index
+                });
             }
         });
 
         return results.filter(r => r.success).length;
     }
 
-    // TẠO HTML TEMPLATE CHO PRINT PAGE
-    createPrintPageHTML() {
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Shipping Labels - ${new Date().toLocaleDateString('vi-VN')}</title>
-                <style>
-                    @page {
-                        size: A4;
-                        margin: 0;
-                    }
-                    
-                    * {
-                        margin: 0;
-                        padding: 0;
-                        box-sizing: border-box;
-                    }
-                    
-                    body {
-                        margin: 0;
-                        padding: 0;
-                        background: white;
-                    }
-                    
-                    .page-container {
-                        page-break-after: always;
-                        page-break-inside: avoid;
-                        position: relative;
-                        width: 210mm;
-                        min-height: 297mm;
-                        margin: 0 auto;
-                        background: white;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    }
-                    
-                    .page-container:last-child {
-                        page-break-after: auto;
-                    }
-                    
-                    .label-info {
-                        text-align: center;
-                        margin-bottom: 5mm;
-                        font-family: Arial, sans-serif;
-                        font-size: 12pt;
-                        font-weight: bold;
-                        color: #333;
-                    }
-                    
-                    .label-canvas {
-                        max-width: 100%;
-                        width: 80%;
-                        height: auto;
-                        display: block;
-                        margin: 0 auto;
-                    }
-                    
-                    @media print {
-                        body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-                        
-                        .page-container {
-                            margin: 0;
-                        }
-                    }
-                    
-                    .loading {
-                        text-align: center;
-                        padding: 50px;
-                        font-family: Arial, sans-serif;
-                        font-size: 18pt;
-                    }
-                    
-                    .spinner {
-                        border: 4px solid #f3f3f3;
-                        border-top: 4px solid #667eea;
-                        border-radius: 50%;
-                        width: 40px;
-                        height: 40px;
-                        animation: spin 1s linear infinite;
-                        margin: 20px auto;
-                    }
-                    
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                </style>
-            </head>
-            <body>
-                <div id="print-content"></div>
-            </body>
-            </html>
-        `;
+    async mergePDFs(pdfBytesArray) {
+        // Tạo PDF document mới
+        const mergedPdf = await PDFLib.PDFDocument.create();
+        
+        for (const pdfData of pdfBytesArray) {
+            try {
+                // Load từng PDF
+                const pdf = await PDFLib.PDFDocument.load(pdfData.bytes);
+                
+                // Copy tất cả pages từ PDF này sang merged PDF
+                const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                
+                // Thêm từng page vào merged PDF
+                pages.forEach(page => {
+                    mergedPdf.addPage(page);
+                });
+                
+            } catch (error) {
+                console.error(`[THG Label Printer] Error merging PDF ${pdfData.link.orderCode}:`, error);
+            }
+        }
+        
+        // Save merged PDF
+        const mergedPdfBytes = await mergedPdf.save();
+        return mergedPdfBytes;
     }
 
     async printAllLabels(links) {
-        if (!window.pdfjsLib) {
-            alert('❌ Thư viện PDF.js chưa được tải!\n\nVui lòng reload extension và thử lại.');
+        if (!window.PDFLib) {
+            alert('❌ Thư viện PDF-LIB chưa được tải!\n\nVui lòng reload extension và thử lại.');
             return;
         }
 
@@ -670,17 +556,17 @@ class LabelPrinter {
         try {
             let successCount = 0;
             const errors = [];
-            const allCanvases = [];
+            const allPdfBytes = [];
 
             // ===================================
-            // BƯỚC 1: XỬ LÝ TẤT CẢ TRONG TAB HIỆN TẠI
+            // BƯỚC 1: TẢI TẤT CẢ PDF FILES
             // ===================================
             const totalBatches = Math.ceil(links.length / this.BATCH_SIZE);
             
             for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
                 const startIndex = batchNum * this.BATCH_SIZE;
                 
-                loadingOverlay.updateText('Đang tải shipping labels');
+                loadingOverlay.updateText('Đang tải PDF files');
                 loadingOverlay.updateSubtext(`Batch ${batchNum + 1}/${totalBatches} - ${this.BATCH_SIZE} files cùng lúc`);
                 loadingOverlay.updateProgress(startIndex, links.length);
 
@@ -688,7 +574,7 @@ class LabelPrinter {
                     links, 
                     startIndex, 
                     this.BATCH_SIZE, 
-                    allCanvases, 
+                    allPdfBytes, 
                     errors
                 );
                 
@@ -698,66 +584,44 @@ class LabelPrinter {
                 loadingOverlay.updateProgress(processed, links.length);
             }
 
-            const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
-            console.log(`[THG Label Printer] ⚡ Processed ${successCount} files in ${processingTime}s`);
+            const downloadTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[THG Label Printer] ⚡ Downloaded ${successCount} files in ${downloadTime}s`);
 
-            if (allCanvases.length > 0) {
-                loadingOverlay.updateText('Đang chuẩn bị HTML...');
-                loadingOverlay.updateSubtext(`Đã xử lý ${successCount}/${links.length} file trong ${processingTime}s`);
-
+            if (allPdfBytes.length > 0) {
                 // Sắp xếp lại theo thứ tự gốc
-                allCanvases.sort((a, b) => a.index - b.index);
+                allPdfBytes.sort((a, b) => a.index - b.index);
 
                 // ===================================
-                // BƯỚC 2: TẠO HTML CONTENT TRƯỚC
+                // BƯỚC 2: MERGE TẤT CẢ PDF
                 // ===================================
-                let htmlContent = '';
+                loadingOverlay.updateText('Đang gộp PDF files');
+                loadingOverlay.updateSubtext(`Đang merge ${allPdfBytes.length} PDF files...`);
                 
-                for (let i = 0; i < allCanvases.length; i++) {
-                    const { canvas, orderCode, orderID } = allCanvases[i];
-                    
-                    // Convert canvas to base64 TRƯỚC KHI mở tab mới
-                    const imageData = canvas.toDataURL('image/png', 0.95);
-                    
-                    htmlContent += `
-                        <div class="page-container">
-                            <img class="label-canvas" src="${imageData}" />
-                        </div>
-                    `;
-                    
-                    // Update progress
-                    if (i % 10 === 0) {
-                        loadingOverlay.updateSubtext(`Chuẩn bị HTML: ${i + 1}/${allCanvases.length}`);
-                    }
-                }
+                const mergedPdfBytes = await this.mergePDFs(allPdfBytes);
+                
+                const mergeTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                console.log(`[THG Label Printer] ✅ Merged ${allPdfBytes.length} PDFs in ${mergeTime}s total`);
 
-                loadingOverlay.updateText('Mở cửa sổ in...');
+                // ===================================
+                // BƯỚC 3: TẠO BLOB VÀ MỞ TAB MỚI ĐỂ IN
+                // ===================================
+                loadingOverlay.updateText('Đang mở cửa sổ in...');
                 
-                // ===================================
-                // BƯỚC 3: MỞ TAB MỚI VÀ GHI HTML ĐÃ CHUẨN BỊ
-                // ===================================
-                const printWindow = window.open('', '_blank');
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                // Mở tab mới với PDF đã merge
+                const printWindow = window.open(url, '_blank');
                 
                 if (!printWindow) {
                     throw new Error('Không thể mở cửa sổ mới. Vui lòng cho phép popup!');
                 }
 
-                // Ghi HTML đã chuẩn bị sẵn
-                printWindow.document.write(this.createPrintPageHTML());
-                printWindow.document.close();
-
-                // Thêm content
-                const contentDiv = printWindow.document.getElementById('print-content');
-                contentDiv.innerHTML = htmlContent;
-
-                // Đợi images load
-                await new Promise(resolve => setTimeout(resolve, 500));
-
                 loadingOverlay.hide();
 
-                // Show result
+                // Show kết quả
                 if (errors.length > 0) {
-                    let message = '';
+                    let message = `✅ Thành công: ${successCount} file\n`;
                     message += `❌ Thất bại: ${errors.length} file\n\n`;
                     const showErrors = errors.slice(0, 5);
                     message += `Chi tiết lỗi:\n`;
@@ -767,14 +631,21 @@ class LabelPrinter {
                     if (errors.length > 5) {
                         message += `  ... và ${errors.length - 5} lỗi khác\n`;
                     }
-                    message += '\n';
                     alert(message);
                 } else {
-                    printWindow.focus();
-                    setTimeout(() => {
-                        printWindow.print();
-                    }, 300);
+                    console.log('[THG Label Printer] ✅ All labels merged successfully');
                 }
+
+                // Tự động in sau 1s
+                setTimeout(() => {
+                    printWindow.print();
+                    
+                    // Dọn dẹp URL sau khi in xong
+                    setTimeout(() => {
+                        URL.revokeObjectURL(url);
+                    }, 5000);
+                }, 1000);
+
             } else {
                 loadingOverlay.hide();
                 
@@ -937,4 +808,8 @@ setTimeout(() => {
     checkAndStartLabelLinkRendering();
 }, 1000);
 
-console.log('[THG Label Printer] Initialized - OPTIMIZED VERSION with parallel processing');
+if (!window.PDFLib) {
+    console.error('[THG Label Printer] PDF-LIB is not loaded!');
+} else {
+    console.log('[THG Label Printer] PDF-LIB loaded successfully');
+}
