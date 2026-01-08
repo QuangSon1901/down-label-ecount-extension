@@ -751,7 +751,7 @@ function tryInjectButton() {
     }
 
     const text = header.innerText.normalize('NFC').trim();
-    if (text !== "Danh sách đơn bán hàng") {
+    if (text !== "Danh sách đơn bán hàng" && text !== "Danh sách bán hàng") {
         return;
     }
 
@@ -776,7 +776,7 @@ function checkAndStartLabelLinkRendering() {
     }
 
     const text = header.innerText.normalize('NFC').trim();
-    if (text === "Danh sách đơn bán hàng") {
+    if (text === "Danh sách đơn bán hàng" || text === "Danh sách bán hàng") {
         setTimeout(() => {
             const columnIndex = labelLinkRenderer.findShippingLabelColumnIndex();
             if (columnIndex !== -1) {
